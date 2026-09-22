@@ -17,6 +17,7 @@
 #include <clocale>
 #include <cstdlib>
 #include <stdexcept>
+#include <cmath>
 
 edaf80::Assignment2::Assignment2(WindowManager& windowManager) :
 	mCamera(0.5f * glm::half_pi<float>(),
@@ -43,7 +44,8 @@ void
 edaf80::Assignment2::run()
 {
 	// Load the sphere geometry
-	auto const shape = parametric_shapes::createCircleRing(2.0f, 0.75f, 40u, 4u);
+	auto const shape = parametric_shapes::createSphere(0.15f, 10u, 10u);
+	
 	if (shape.vao == 0u)
 		return;
 
@@ -111,7 +113,7 @@ edaf80::Assignment2::run()
 
 	// Set the default tensions value; it can always be changed at runtime
 	// through the "Scene Controls" window.
-	float catmull_rom_tension = 0.0f;
+	float catmull_rom_tension = 0.5f;
 
 	// Set whether the default interpolation algorithm should be the linear one;
 	// it can always be changed at runtime through the "Scene Controls" window.
@@ -173,7 +175,9 @@ edaf80::Assignment2::run()
 	float basis_length_scale = 1.0f;
 
 	changeCullMode(cull_mode);
-
+	
+	float path_progress = 0.0f;
+	float const seconds_per_segment = 2.0f;
 	while (!glfwWindowShouldClose(window)) {
 		auto const nowTime = std::chrono::high_resolution_clock::now();
 		auto const deltaTimeUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime - lastTime);
@@ -211,21 +215,35 @@ edaf80::Assignment2::run()
 
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		bonobo::changePolygonMode(polygon_mode);
-
+	
+		
 
 		if (interpolate) {
-			//! \todo Interpolate the movement of a shape between various
-			//!        control points.
+			std::size_t const count = control_point_locations.size();
+			
+			float const delta_seconds = std::chrono::duration<float> (deltaTimeUs).count();
+			
+			path_progress += delta_seconds / seconds_per_segment;
+			path_progress = std::fmod(path_progress, static_cast<float>(count));
+			
+			std::size_t const current = static_cast<std::size_t>(std::floor(path_progress));
+			
+			float const x
+			= path_progress - static_cast<float>(current);
+			
+			std::size_t const previous = (current + count - 1u) % count;
+			std::size_t const next = (current + 1u ) % count;
+			std::size_t const after = (current +2u) % count;
+			
+			glm::vec3 new_position;
+			
 			if (use_linear) {
-				//! \todo Compute the interpolated position
-				//!       using the linear interpolation.
+				new_position = interpolation::evalLERP(control_point_locations[current], control_point_locations[next], x);
 			}
 			else {
-				//! \todo Compute the interpolated position
-				//!       using the Catmull-Rom interpolation;
-				//!       use the `catmull_rom_tension`
-				//!       variable as your tension argument.
+				new_position = interpolation::evalCatmullRom(control_point_locations[previous], control_point_locations[current], control_point_locations[next], control_point_locations[after], catmull_rom_tension, x);
 			}
+			circle_rings.get_transform().SetTranslate(new_position);
 		}
 
 		circle_rings.render(mCamera.GetWorldToClipMatrix());
