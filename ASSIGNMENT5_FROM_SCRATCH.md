@@ -1,5 +1,7 @@
 # Learn Neon Run from scratch
 
+> Current controls: WASD accelerates, releasing coasts, and Space brakes. Hitting a ring ends the game. Read [the physics lesson](ASSIGNMENT5_PHYSICS.md) for current movement and collision code. The original lesson below describes the earlier version; its direct-speed examples and line numbers are historical.
+
 Our game is a small **Torus Ride**: you steer up, down, left and right while rings approach. Go through their openings to earn points. There is no timer, lives system or game-over condition. A miss adds to the miss counter, then you continue. A small white crosshair marks the centre of the screen. Steer so this mark stays inside the approaching opening. Scoring still treats the camera as a point, so the aiming marker adds no collision physics or extra difficulty.
 
 Read this lesson in order. After each worked example, stop and try the short check before reading its answer. You do not need to memorise every OpenGL function name; you should understand what data we create, how it changes, and how it becomes a picture. The separate [line-by-line guide and requirement checklist](/Users/sugatasarker/Developer/CG_Labs/ASSIGNMENT5_GUIDE.md) has the detailed controls/scoring tables.

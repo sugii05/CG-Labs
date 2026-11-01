@@ -131,7 +131,12 @@ edaf80::Assignment5::run()
 	float const ring_end_z = 10.0f;
 	float const loop_length = ring_spacing * static_cast<float>(rings.size());
 	float ring_speed = 4.0f;
-	float const steering_speed = 4.0f;
+	float const steering_acceleration = 18.0f;
+	float const maximum_steering_speed = 4.0f;
+	float const drag = 3.0f;
+	float const brake_drag = 14.0f;
+	float const maximum_physics_step = 1.0f / 120.0f;
+	glm::vec3 camera_velocity(0.0f);
 
 	bool pause_motion = false;
 	bool game_over = false;
@@ -203,6 +208,7 @@ edaf80::Assignment5::run()
 
 		if (restart_requested) {
 			game_over = false;
+			camera_velocity = glm::vec3(0.0f);
 			mCamera.mWorld.SetTranslate(glm::vec3(0.0f, 0.0f, 8.0f));
 			score = 0;
 			missed_rings = 0;
@@ -217,53 +223,77 @@ edaf80::Assignment5::run()
 		}
 
 		if (!pause_motion && !shader_reload_failed && !game_over) {
-			auto const previous_camera_position = mCamera.mWorld.GetTranslation();
-			auto camera_position = previous_camera_position;
 			glm::vec3 direction(0.0f);
+			bool braking = false;
 			if (!inputHandler.IsKeyboardCapturedByUI()) {
 				if (inputHandler.GetKeycodeState(GLFW_KEY_A) & PRESSED) direction.x -= 1.0f;
 				if (inputHandler.GetKeycodeState(GLFW_KEY_D) & PRESSED) direction.x += 1.0f;
 				if (inputHandler.GetKeycodeState(GLFW_KEY_W) & PRESSED) direction.y += 1.0f;
 				if (inputHandler.GetKeycodeState(GLFW_KEY_S) & PRESSED) direction.y -= 1.0f;
+				braking = (inputHandler.GetKeycodeState(GLFW_KEY_SPACE) & PRESSED) != 0;
 			}
-			if (glm::length(direction) > 0.0f) {
-				camera_position += glm::normalize(direction) * steering_speed * dt;
+			if (braking) {
+				direction = glm::vec3(0.0f);
+			} else if (glm::length(direction) > 0.0f) {
+				direction = glm::normalize(direction);
 			}
-			camera_position.x = glm::clamp(camera_position.x, -4.0f, 4.0f);
-			camera_position.y = glm::clamp(camera_position.y, -4.0f, 4.0f);
-			mCamera.mWorld.SetTranslate(camera_position);
 
-			for (std::size_t i = 0u; i < rings.size(); i++ ){
-				auto& ring = rings[i];
-				auto position = ring.get_transform().GetTranslation();
-				float const previous_z = position.z;
-				position.z += ring_speed * dt;
-				ring.get_transform().RotateZ(ring_angular_speeds[i] * dt);
-
-				if (previous_z < camera_position.z && position.z >= camera_position.z) {
-					float const crossing_fraction = (camera_position.z - previous_z) / (position.z - previous_z);
-					auto const crossing_position = previous_camera_position
-					    + crossing_fraction * (camera_position - previous_camera_position);
-					float const distance = glm::length(glm::vec2(crossing_position - position));
-					if (distance < opening_radius) {
-						++score;
-						last_result = "Through the opening! +1 point";
-					} else {
-						if (distance <= ring_radius + tube_radius) {
-								game_over = true;
-								last_result = "Game over! You hit a ring. Click Restart.";
-								ring.get_transform().SetTranslate(position);
-								break;
-							}
-
-							last_result = "Missed. Aim for the next opening.";
+			float remaining_time = dt;
+			while (remaining_time > 0.0f && !game_over) {
+				float const step = glm::min(remaining_time, maximum_physics_step);
+				remaining_time -= step;
+				auto const previous_camera_position = mCamera.mWorld.GetTranslation();
+				auto camera_position = previous_camera_position;
+				float const active_drag = braking ? brake_drag : drag;
+				glm::vec3 const acceleration = direction * steering_acceleration
+				    - camera_velocity * active_drag;
+				camera_velocity += acceleration * step;
+				float const speed = glm::length(camera_velocity);
+				if (speed > maximum_steering_speed) {
+					camera_velocity *= maximum_steering_speed / speed;
+				} else if (glm::length(direction) == 0.0f && speed < 0.01f) {
+					camera_velocity = glm::vec3(0.0f);
+				}
+				camera_position += camera_velocity * step;
+				for (int axis = 0; axis < 2; ++axis) {
+					if ((camera_position[axis] <= -4.0f && camera_velocity[axis] < 0.0f)
+					    || (camera_position[axis] >= 4.0f && camera_velocity[axis] > 0.0f)) {
+						camera_velocity[axis] = 0.0f;
 					}
+					camera_position[axis] = glm::clamp(camera_position[axis], -4.0f, 4.0f);
 				}
+				mCamera.mWorld.SetTranslate(camera_position);
 
-				while (position.z >= ring_end_z) {
-					position.z -= loop_length;
+				for (std::size_t i = 0u; i < rings.size(); ++i) {
+					auto& ring = rings[i];
+					auto position = ring.get_transform().GetTranslation();
+					float const previous_z = position.z;
+					position.z += ring_speed * step;
+					ring.get_transform().RotateZ(ring_angular_speeds[i] * step);
+
+					if (!game_over && previous_z < camera_position.z && position.z >= camera_position.z) {
+						float const crossing_fraction = (camera_position.z - previous_z) / (position.z - previous_z);
+						auto const crossing_position = previous_camera_position
+						    + crossing_fraction * (camera_position - previous_camera_position);
+						float const distance = glm::length(glm::vec2(crossing_position - position));
+						if (distance < opening_radius) {
+							++score;
+							last_result = "Through the opening! +1 point";
+						} else if (distance <= ring_radius + tube_radius) {
+							game_over = true;
+							camera_velocity = glm::vec3(0.0f);
+							last_result = "Game over! You hit a ring. Click Restart.";
+						} else {
+							++missed_rings;
+							last_result = "Missed. Aim for the next opening.";
+						}
+					}
+
+					while (position.z >= ring_end_z) {
+						position.z -= loop_length;
+					}
+					ring.get_transform().SetTranslate(position);
 				}
-				ring.get_transform().SetTranslate(position);
 			}
 		}
 
@@ -285,13 +315,15 @@ edaf80::Assignment5::run()
 
 		bool const opened = ImGui::Begin("Neon Run", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 		if (opened) {
-			ImGui::TextUnformatted("W/A/S/D: up / left / down / right");
+			ImGui::TextUnformatted("W/A/S/D: accelerate up / left / down / right");
+			ImGui::TextUnformatted("Release to coast. Hold Space to brake.");
+			ImGui::Text("Steering speed: %.1f / %.1f", glm::length(camera_velocity), maximum_steering_speed);
 			ImGui::TextUnformatted("Keep the crosshair inside each opening.");
 			ImGui::Text("Score: %d | Missed: %d", score, missed_rings);
 			ImGui::TextUnformatted(last_result);
 			if (ImGui::Button("Restart")) restart_requested = true;
 			ImGui::Checkbox("Pause", &pause_motion);
-			ImGui::SliderFloat("Speed (units/s)", &ring_speed, 1.0f, 10.0f);
+			ImGui::SliderFloat("Ring speed (units/s)", &ring_speed, 1.0f, 10.0f);
 			bonobo::uiSelectPolygonMode("Polygon mode", polygon_mode);
 			ImGui::Checkbox("Show basis", &show_basis);
 			ImGui::SliderFloat("Basis thickness scale", &basis_thickness_scale, 0.0f, 100.0f);

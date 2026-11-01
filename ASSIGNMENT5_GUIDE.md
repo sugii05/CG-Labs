@@ -1,5 +1,7 @@
 # Neon Run: course checklist and code explanation
 
+> Current controls: WASD accelerates, releasing coasts, and Space brakes. Hitting a ring ends the game. Read [the physics lesson](ASSIGNMENT5_PHYSICS.md) for current movement and collision code. The original lesson below describes the earlier version; its direct-speed examples and line numbers are historical.
+
 This is the small first-person **Torus Ride** suggested by the seminar. Use W/A/S/D to move up/left/down/right and keep the crosshair inside the next ring opening. The rings approach automatically. Passing an opening earns one point; missing increases the miss count. The path repeats until you close the game.
 
 This guide explains steering, visible spin, a pass/miss counter and restart. A small white crosshair marks the centre of the screen. It consists of two line segments drawn relative to the camera. Scoring still uses the camera point. It uses the existing course framework and libraries. There is no additional engine or dependency.
