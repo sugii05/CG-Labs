@@ -184,11 +184,11 @@ int main()
 	CelestialBody moon(sphere, &celestial_body_shader, moon_texture);
 	moon.set_scale(moon_scale);
 	moon.set_spin(moon_spin);
-	moon.set_orbit({1.5f, glm::radians(-66.0f), glm::two_pi<float>() / 1.3f});
+	moon.set_orbit(moon_orbit);
 
 	CelestialBody earth(sphere, &celestial_body_shader, earth_texture);
 	earth.set_spin(earth_spin);
-	earth.set_orbit({-2.5f, glm::radians(45.0f), glm::two_pi<float>() / 10.0f});
+	earth.set_orbit(earth_orbit);
 	earth.add_child(&moon);
 	earth.set_scale(earth_scale);
 	
@@ -232,6 +232,7 @@ int main()
 	sun.add_child(&neptune);
 	sun.add_child(&venus);
 	sun.add_child(&earth);
+	sun.add_child(&mars);
 	
 	
 	

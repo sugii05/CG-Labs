@@ -82,8 +82,23 @@ edaf80::Assignment3::run()
 	                                         texcoord_shader);
 	if (texcoord_shader == 0u)
 		LogError("Failed to load texcoord shader");
+	
+	GLuint skybox_shader = 0u;
+	program_manager.CreateAndRegisterProgram("Skybox", {
+		{ShaderType::vertex, "EDAF80/skybox.vert"},
+		{ShaderType::fragment, "EDAF80/skybox.frag"}
+	}, skybox_shader);
+	
+	GLuint phong_shader = 0u;
+	program_manager.CreateAndRegisterProgram("Phong", {
+		
+		{ShaderType::vertex, "EDAF80/phong.vert"},
+		{ShaderType::fragment, "EDAF80/phong.frag"}
+	}, phong_shader);
+	
 
 	auto light_position = glm::vec3(-2.0f, 4.0f, 2.0f);
+	
 	auto const set_uniforms = [&light_position](GLuint program){
 		glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(light_position));
 	};
@@ -105,10 +120,17 @@ edaf80::Assignment3::run()
 		LogError("Failed to retrieve the mesh for the skybox");
 		return;
 	}
+	
+	GLuint cubemap = bonobo::loadTextureCubeMap(config::resources_path("cubemaps/NissiBeach2/posx.jpg"), config::resources_path("cubemaps/NissiBeach2/negx.jpg"), config::resources_path("cubemaps/NissiBeach2/posy.jpg"), config::resources_path("cubemaps/NissiBeach2/negy.jpg"), config::resources_path("cubemaps/NissiBeach2/posz.jpg"), config::resources_path("cubemaps/NissiBeach2/negz.jpg"));
+	if (cubemap == 0u) {
+		LogError("Failed to load cubemap");
+		return;
+	}
 
 	Node skybox;
 	skybox.set_geometry(skybox_shape);
-	skybox.set_program(&fallback_shader, set_uniforms);
+	skybox.set_program(&skybox_shader);
+	skybox.add_texture("cubemap", cubemap, GL_TEXTURE_CUBE_MAP);
 
 	auto demo_shape = parametric_shapes::createSphere(1.5f, 40u, 40u);
 	if (demo_shape.vao == 0u) {
@@ -126,7 +148,41 @@ edaf80::Assignment3::run()
 	demo_sphere.set_geometry(demo_shape);
 	demo_sphere.set_material_constants(demo_material);
 	demo_sphere.set_program(&fallback_shader, phong_set_uniforms);
-
+	
+	GLuint leather_texture = bonobo::loadTexture2D(config::resources_path("textures/leather_red_02_coll1_2k.jpg"));
+	
+	if (leather_texture == 0u) {
+		LogError("Failed to Load");
+		return;
+	}
+	
+	
+	
+	
+	demo_sphere.add_texture("diffuse_texture", leather_texture,  GL_TEXTURE_2D);
+	GLuint leather_normal_texture = bonobo::loadTexture2D(config::resources_path("textures/leather_red_02_nor_2k.jpg"));
+	
+	if (leather_normal_texture == 0u) {
+		LogError("Failed to Load");
+		return;
+	}
+	
+	demo_sphere.add_texture("normal_texture", leather_normal_texture, GL_TEXTURE_2D);
+	
+												   
+	GLuint leather_specular_texture = bonobo::loadTexture2D(config::resources_path("textures/leather_red_02_rough_2k.jpg"));
+	
+	if (leather_specular_texture == 0u) {
+		LogError("Failed to Load");
+		return;
+		
+	}
+	
+	demo_sphere.add_texture("specular_texture", leather_specular_texture, GL_TEXTURE_2D);
+	
+	
+	
+	
 
 	glClearDepthf(1.0f);
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -199,7 +255,12 @@ edaf80::Assignment3::run()
 		bonobo::changePolygonMode(polygon_mode);
 
 
+		skybox.get_transform().SetTranslate(camera_position);
+		glDisable(GL_CULL_FACE);
+		glDepthMask(GL_FALSE);
 		skybox.render(mCamera.GetWorldToClipMatrix());
+		glDepthMask(GL_TRUE);
+		bonobo::changeCullMode(cull_mode);
 		demo_sphere.render(mCamera.GetWorldToClipMatrix());
 
 

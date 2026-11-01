@@ -46,29 +46,6 @@ namespace parametric_shapes
 	                               unsigned int const longitude_split_count,
 	                               unsigned int const latitude_split_count);
 
-	//! \brief Create a torus for a given tesselation level and make it
-	//!        available to OpenGL.
-	//!
-	//! @param major_radius radius from the centre to the middle of the
-	//!                     cross-section
-	//! @param minor_radius radius of the cross-section (giving the torus
-	//!                     its thickness)
-	//! @param major_split_count the number of times the angle for the
-	//!                          major ring should be split: 0 means each
-	//!                          line going around the major ring consist
-	//!                          of a single edge spanning the full 360°,
-	//!                          with 1 you get two edges (each spanning
-	//!                          180°); 2 is the minimum for getting a 3-D
-	//!                          shape.
-	//! @param minor_split_count the number of times the angle for the
-	//!                          minor ring should be split: 0 means each
-	//!                          line going around the minor ring consist
-	//!                          of a single edge spanning the full 360°,
-	//!                          with 1 you get two edges (each spanning
-	//!                          180°); 2 is the minimum for getting a 3-D
-	//!                          shape.
-	//! @return wrapper around OpenGL objects' name containing the geometry
-	//!         data
 	bonobo::mesh_data createTorus(float const major_radius,
 	                              float const minor_radius,
 	                              unsigned int const major_split_count,

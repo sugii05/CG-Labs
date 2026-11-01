@@ -14,25 +14,51 @@ parametric_shapes::createQuad(float const width, float const height,
                               unsigned int const horizontal_split_count,
                               unsigned int const vertical_split_count)
 {
-	auto const vertices = std::array<glm::vec3, 4>{
-		glm::vec3(0.0f,  0.0f,   0.0f),
-		glm::vec3(width, 0.0f,   0.0f),
-		glm::vec3(width, height, 0.0f),
-		glm::vec3(0.0f,  height, 0.0f)
-	};
-
-	auto const index_sets = std::array<glm::uvec3, 2>{
-		glm::uvec3(0u, 1u, 2u),
-		glm::uvec3(0u, 2u, 3u)
-	};
+	unsigned int const horizontal_segment_count = horizontal_split_count + 1u;
+	unsigned int const vertical_segment_count = vertical_split_count + 1u;
+	unsigned int const cols = horizontal_segment_count + 1u;
+	unsigned int const rows = vertical_segment_count + 1u;
+	unsigned int const vertices_nb = rows * cols;
+	
+	
+	auto vertices  = std::vector <glm::vec3> (vertices_nb);
+	auto texcoords = std::vector <glm::vec3> (vertices_nb);
+	size_t index = 0;
+	
+	for (unsigned int i = 0u; i < rows; ++i) {
+		float const h = i*(height/vertical_segment_count);
+		
+		for (unsigned int j = 0u; j < cols; ++j) {
+			float const w = j*(width/horizontal_segment_count);
+			vertices[index] = glm::vec3(w,0.0f,h);
+			
+			float const u = static_cast<float>(j) / static_cast<float>(cols-1);
+			float const v = static_cast<float>(i)/ static_cast<float>(rows-1);
+			texcoords[index] = glm::vec3(u, v, 0.0f);
+			++index;
+		}
+	}
+	
+	auto index_sets = std::vector <glm::uvec3> (2u * horizontal_segment_count * vertical_segment_count);
+	index = 0;
+	
+	for (unsigned int i = 0u; i < rows - 1u; ++i) {
+		
+		for (unsigned int j = 0u; j < cols - 1u; ++j) {
+			index_sets[index] = glm::uvec3(cols * i + j, cols * (i + 1u) + (j + 1u), cols * i + (j + 1u));
+			
+			++index;
+			
+			
+			index_sets[index] = glm::uvec3(cols * i + j, cols * (i + 1u) + j, cols * (i + 1u) + (j + 1u));
+			
+			++index;
+		}
+		
+		
+	}
 
 	bonobo::mesh_data data;
-
-	if (horizontal_split_count > 0u || vertical_split_count > 0u)
-	{
-		LogError("parametric_shapes::createQuad() does not support tesselation.");
-		return data;
-	}
 
 	//
 	// NOTE:
@@ -69,9 +95,19 @@ parametric_shapes::createQuad(float const width, float const height,
 	// and therefore bind the buffer to the corresponding target.
 	glBindBuffer(GL_ARRAY_BUFFER, data.bo);
 
-	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(glm::vec3),
-	             /* where is the data stored on the CPU? */vertices.data(),
-	             /* inform OpenGL that the data is modified once, but used often */GL_STATIC_DRAW);
+	auto const vertices_bytes = vertices.size() * sizeof(glm::vec3);
+	auto const texcoords_bytes = texcoords.size() * sizeof(glm::vec3);
+
+	// Allocate space for both arrays.
+	glBufferData(GL_ARRAY_BUFFER, vertices_bytes + texcoords_bytes,
+	             nullptr, GL_STATIC_DRAW);
+
+	// Copy positions into the first section.
+	glBufferSubData(GL_ARRAY_BUFFER, 0, vertices_bytes, vertices.data());
+
+	// Copy UVs immediately after the positions.
+	glBufferSubData(GL_ARRAY_BUFFER, vertices_bytes,
+	                texcoords_bytes, texcoords.data());
 
 	// Vertices have been just stored into a buffer, but we still need to
 	// tell Vertex Array where to find them, and how to interpret the data
@@ -99,6 +135,12 @@ parametric_shapes::createQuad(float const width, float const height,
 	                      /* once all components of a vertex have been read, how far away (in bytes) is the next vertex? */0,
 	                      /* how far away (in bytes) from the start of the buffer is the first vertex? */reinterpret_cast<GLvoid const*>(0x0));
 
+	// UVs contain three floats per vertex and start after the positions.
+	glEnableVertexAttribArray(static_cast<unsigned int>(bonobo::shader_bindings::texcoords));
+	glVertexAttribPointer(static_cast<unsigned int>(bonobo::shader_bindings::texcoords),
+	                      3, GL_FLOAT, GL_FALSE, 0,
+	                      reinterpret_cast<GLvoid const*>(vertices_bytes));
+
 	// Now, let's allocate a second one for the indices.
 	//
 	// Have the buffer's name stored into `data.ibo`.
@@ -112,7 +154,7 @@ parametric_shapes::createQuad(float const width, float const height,
 	             /* where is the data stored on the CPU? */index_sets.data(),
 	             /* inform OpenGL that the data is modified once, but used often */GL_STATIC_DRAW);
 
-	data.indices_nb = /*! \todo how many indices do we have? */6u;
+	data.indices_nb = static_cast<GLsizei>(index_sets.size() * 3u);
 
 	// All the data has been recorded, we can unbind them.
 	glBindVertexArray(0u);
@@ -288,9 +330,89 @@ parametric_shapes::createTorus(float const major_radius,
                                unsigned int const major_split_count,
                                unsigned int const minor_split_count)
 {
-	//! \todo (Optional) Implement this function
-	return bonobo::mesh_data();
+	if (major_radius <= minor_radius || minor_radius <= 0.0f ||
+	    major_split_count < 2u || minor_split_count < 2u) {
+		LogError("A torus needs major_radius > minor_radius > 0 and at least 3 segments per circle");
+		return bonobo::mesh_data();
+	}
+
+	unsigned int const major_segments = major_split_count + 1u;
+	unsigned int const minor_segments = minor_split_count + 1u;
+	unsigned int const rows = major_segments + 1u;
+	unsigned int const cols = minor_segments + 1u;
+
+	auto vertices = std::vector<glm::vec3>(rows * cols);
+	auto normals = std::vector<glm::vec3>(rows * cols);
+	auto texcoords = std::vector<glm::vec3>(rows * cols);
+	for (unsigned int i = 0u; i < rows; ++i) {
+		float const u = static_cast<float>(i) / static_cast<float>(major_segments);
+		float const theta = glm::two_pi<float>() * u;
+		for (unsigned int j = 0u; j < cols; ++j) {
+			float const v = static_cast<float>(j) / static_cast<float>(minor_segments);
+			float const phi = glm::two_pi<float>() * v;
+			float const distance = major_radius + minor_radius * std::cos(phi);
+			auto const index = i * cols + j;
+
+			vertices[index] = glm::vec3(distance * std::cos(theta),
+			                            distance * std::sin(theta),
+			                            minor_radius * std::sin(phi));
+			normals[index] = glm::vec3(std::cos(phi) * std::cos(theta),
+			                           std::cos(phi) * std::sin(theta),
+			                           std::sin(phi));
+			texcoords[index] = glm::vec3(u, v, 0.0f);
+		}
+	}
+
+	auto triangles = std::vector<glm::uvec3>();
+	triangles.reserve(2u * major_segments * minor_segments);
+	for (unsigned int i = 0u; i < major_segments; ++i) {
+		for (unsigned int j = 0u; j < minor_segments; ++j) {
+			unsigned int const a = i * cols + j;
+			unsigned int const b = (i + 1u) * cols + j;
+			unsigned int const c = b + 1u;
+			unsigned int const d = a + 1u;
+			triangles.emplace_back(a, b, c);
+			triangles.emplace_back(a, c, d);
+		}
+	}
+
+	bonobo::mesh_data data;
+	data.name = "Torus";
+	data.vertices_nb = static_cast<GLsizei>(vertices.size());
+	data.indices_nb = static_cast<GLsizei>(triangles.size() * 3u);
+	glGenVertexArrays(1, &data.vao);
+	glBindVertexArray(data.vao);
+
+	auto const array_bytes = static_cast<GLsizeiptr>(vertices.size() * sizeof(glm::vec3));
+	glGenBuffers(1, &data.bo);
+	glBindBuffer(GL_ARRAY_BUFFER, data.bo);
+	glBufferData(GL_ARRAY_BUFFER, 3 * array_bytes, nullptr, GL_STATIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, array_bytes, vertices.data());
+	glBufferSubData(GL_ARRAY_BUFFER, array_bytes, array_bytes, normals.data());
+	glBufferSubData(GL_ARRAY_BUFFER, 2 * array_bytes, array_bytes, texcoords.data());
+
+	glEnableVertexAttribArray(static_cast<GLuint>(bonobo::shader_bindings::vertices));
+	glVertexAttribPointer(static_cast<GLuint>(bonobo::shader_bindings::vertices),
+	                      3, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glEnableVertexAttribArray(static_cast<GLuint>(bonobo::shader_bindings::normals));
+	glVertexAttribPointer(static_cast<GLuint>(bonobo::shader_bindings::normals),
+	                      3, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<void const*>(array_bytes));
+	glEnableVertexAttribArray(static_cast<GLuint>(bonobo::shader_bindings::texcoords));
+	glVertexAttribPointer(static_cast<GLuint>(bonobo::shader_bindings::texcoords),
+	                      3, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<void const*>(2 * array_bytes));
+
+	glGenBuffers(1, &data.ibo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, data.ibo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+	             static_cast<GLsizeiptr>(triangles.size() * sizeof(glm::uvec3)),
+	             triangles.data(), GL_STATIC_DRAW);
+
+	glBindVertexArray(0u);
+	glBindBuffer(GL_ARRAY_BUFFER, 0u);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0u);
+	return data;
 }
+
 
 bonobo::mesh_data
 parametric_shapes::createCircleRing(float const radius,

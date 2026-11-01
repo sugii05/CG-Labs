@@ -40,8 +40,8 @@ void
 edaf80::Assignment4::run()
 {
 	// Set up the camera
-	mCamera.mWorld.SetTranslate(glm::vec3(-40.0f, 14.0f, 6.0f));
-	mCamera.mWorld.LookAt(glm::vec3(0.0f));
+	mCamera.mWorld.SetTranslate(glm::vec3(20.0f, 3.0, 50.0f));
+	mCamera.mWorld.LookAt(glm::vec3(80.0f, 1.0f, 50.0f));
 	mCamera.mMouseSensitivity = glm::vec2(0.003f);
 	mCamera.mMovementSpeed = glm::vec3(3.0f); // 3 m/s => 10.8 km/h
 	auto camera_position = mCamera.mWorld.GetTranslation();
@@ -62,12 +62,82 @@ edaf80::Assignment4::run()
 	// Todo: Insert the creation of other shader programs.
 	//       (Check how it was done in assignment 3.)
 	//
+	GLuint water_shader = 0u;
+	program_manager.CreateAndRegisterProgram(
+		"Water",
+		{
+			{ ShaderType::vertex, "EDAF80/water.vert" },
+			{ ShaderType::fragment, "EDAF80/water.frag" }
+		},
+		water_shader);
+
+	if (water_shader == 0u) {
+		LogError("Failed to load water shader");
+		return;
+	}
+	GLuint skybox_shader = 0u;
+	program_manager.CreateAndRegisterProgram("Skybox", {
+		{ShaderType::vertex, "EDAF80/skybox.vert"},
+		{ShaderType::fragment, "EDAF80/skybox.frag"}
+	}, skybox_shader);
+	if (skybox_shader == 0u) {
+		LogError("MEH");
+		return;
+	}
+	
+
 
 	float elapsed_time_s = 0.0f;
+	auto const water_set_uniforms = [&elapsed_time_s, &camera_position](GLuint program) {
+		glUniform1f (
+					 glGetUniformLocation(program, "elapsed_time_s"), elapsed_time_s);
+		glUniform3fv ( glGetUniformLocation(program, "camera_position"), 1, glm::value_ptr(camera_position));
+		
+	};
 
 	//
 	// Todo: Load your geometry
+	
 	//
+	auto ocean_shape = parametric_shapes::createQuad(
+		100.0f, 100.0f, 999u, 999u);
+
+	Node ocean;
+	ocean.set_geometry(ocean_shape);
+	ocean.set_program(&water_shader, water_set_uniforms);
+	
+	GLuint cubemap = bonobo::loadTextureCubeMap	(
+		config::resources_path("cubemaps/NissiBeach2/posx.jpg"),
+												 config::resources_path("cubemaps/NissiBeach2/negx.jpg"),
+												 config::resources_path("cubemaps/NissiBeach2/posy.jpg"),
+												 config::resources_path("cubemaps/NissiBeach2/negy.jpg"),
+												 config::resources_path("cubemaps/NissiBeach2/posz.jpg"),
+												 config::resources_path("cubemaps/NissiBeach2/negz.jpg"));
+
+												 
+			
+
+	if (cubemap == 0u) {
+		LogError("Failed to load cubemap");
+		return;
+	}
+	auto skybox_shape = parametric_shapes::createSphere(20.0f, 100u, 100u);
+	Node skybox;
+	skybox.set_geometry(skybox_shape);
+	skybox.set_program(&skybox_shader);
+	skybox.add_texture("cubemap", cubemap, GL_TEXTURE_CUBE_MAP);
+	ocean.add_texture("cubemap", cubemap, GL_TEXTURE_CUBE_MAP);
+	
+	GLuint normal_map = bonobo::loadTexture2D(config::resources_path("textures/waves.png"));
+	
+	if (normal_map == 0u) {
+		LogError("meh");
+		return;
+		
+	}
+	
+	ocean.add_texture("normal_map", normal_map, GL_TEXTURE_2D);
+	 
 
 	glClearDepthf(1.0f);
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -76,7 +146,7 @@ edaf80::Assignment4::run()
 
 	auto lastTime = std::chrono::high_resolution_clock::now();
 
-	bool pause_animation = true;
+	bool pause_animation = false;
 	bool use_orbit_camera = false;
 	auto cull_mode = bonobo::cull_mode_t::disabled;
 	auto polygon_mode = bonobo::polygon_mode_t::fill;
@@ -146,10 +216,23 @@ edaf80::Assignment4::run()
 		bonobo::changePolygonMode(polygon_mode);
 
 
+		
+		
 		if (!shader_reload_failed) {
-			//
-			// Todo: Render all your geometry here.
-			//
+			
+			skybox.get_transform().SetTranslate(camera_position);
+
+			glDisable(GL_CULL_FACE);
+
+			
+			glDepthMask(GL_FALSE);
+			skybox.render(mCamera.GetWorldToClipMatrix());
+			glDepthMask(GL_TRUE);
+
+
+			bonobo::changeCullMode(cull_mode);
+
+			ocean.render(mCamera.GetWorldToClipMatrix());
 		}
 
 

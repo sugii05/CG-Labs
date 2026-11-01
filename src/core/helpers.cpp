@@ -411,7 +411,7 @@ bonobo::loadTextureCubeMap(std::string const& posx, std::string const& negx,
 	// and `glGenBuffers()` that were used in assignment 2,
 	// `glGenTextures()` can create `n` texture objects at once. Here we
 	// only one texture object that will contain our whole cube map.
-	glGenTextures(1, /*! \todo fill me */nullptr);
+	glGenTextures(1, &texture);
 	assert(texture != 0u);
 
 	// Similarly to vertex arrays and buffers, we first need to bind the
@@ -463,7 +463,45 @@ bonobo::loadTextureCubeMap(std::string const& posx, std::string const& negx,
 	             /* the pointer to the actual data on the CPU */reinterpret_cast<GLvoid const*>(data.data()));
 
 	//! \todo repeat now the texture filling for the 5 remaining faces
+	std::string const filenames[] = {
+		posx,
+		posy,
+		negy,
+		posz,
+		negz
+	};
 
+	GLenum const targets[] = {
+		GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+	};
+
+	for (int face = 0; face < 5; ++face) {
+		data = getTextureData(
+			filenames[face], width, height, false
+		);
+
+		if (data.empty()) {
+			glDeleteTextures(1, &texture);
+			return 0u;
+		}
+
+		glTexImage2D(
+			targets[face],
+			0,
+			GL_RGBA,
+			static_cast<GLsizei>(width),
+			static_cast<GLsizei>(height),
+			0,
+			GL_RGBA,
+			GL_UNSIGNED_BYTE,
+			data.data()
+		);
+	}
+	
 	if (generate_mipmap)
 		// Generate the mipmap hierarchy; wait for EDAN35 to understand
 		// what it does
